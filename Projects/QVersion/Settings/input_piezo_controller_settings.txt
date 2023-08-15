@@ -1,0 +1,1 @@
+{"x_voltage": 66.0, "y_voltage": 24.579312898687867, "z_voltage": 36.31, "x_resolution": 0.5, "y_resolution": 0.5, "z_resolution": 0.5}
