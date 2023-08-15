@@ -1,1 +1,0 @@
-{"wavelength": 2327.75, "sensitivity": 1, "wavelength_span": 6}

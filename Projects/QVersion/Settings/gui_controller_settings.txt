@@ -1,1 +1,0 @@
-{"wavelength_sweep_save_path": "Polarization_Off_Chip_TM_Filter_TE_ST3_1150nm_1_R", "voltage_sweep_save_path": "B", "save_bool": true, "sweep_wavelength_mode": "Loss"}
