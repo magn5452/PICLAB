@@ -18,7 +18,7 @@ import scipy.signal
 path = 'Pictures/'
 
 # Load Image
-picture_index = 135
+picture_index = 129
 pictures = print_files(path, 'bmp')
 original_image = Image.open(path + pictures[picture_index])
 original_image = original_image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)  # flip image and manually rotate
@@ -145,20 +145,20 @@ plt.title("Saturation")
 plt.xlabel('x [um]')
 plt.legend()
 
-
+cropped_image_height = np.shape(rotated_image_array)[0]
 # Find Background
-average_background, confidence_background, prediction_background = find_mean_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], background_lower, background_upper)
+average_background, confidence_background, prediction_background = find_mean_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], cropped_image_height - background_upper, cropped_image_height - background_lower)
 print("Background: ", average_background, "+-", confidence_background)
 
-average_background_list, confidence_background_list, prediction_background_list = find_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], background_lower, background_upper)
+average_background_list, confidence_background_list, prediction_background_list = find_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], cropped_image_height - background_upper, cropped_image_height - background_lower)
 print("Background: ", average_background, "+-", confidence_background)
 
 # Plot Data
 x_length_crop_mu_array = x_mu_array[left_saturation_crop:right_saturation_crop] # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
 x = x_length_crop_mu_array
-
-y = np.mean(rotated_image_array[lower:upper, left_saturation_crop:right_saturation_crop, 2], axis=0)
-y_std = np.std(rotated_image_array[lower:upper, left_saturation_crop:right_saturation_crop, 2], axis=0)
+pic = rotated_image_array[:, left_saturation_crop:right_saturation_crop, 2]
+y = np.mean(rotated_image_array[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop, 2], axis=0)
+y_std = np.std(rotated_image_array[cropped_image_height - lower: cropped_image_height - upper, left_saturation_crop:right_saturation_crop, 2], axis=0)
 
 plt.figure()
 #plt.plot(x_length_crop_mu_array, np.max(rotated_image_array[lower:upper, :, 2], axis=0), 'k-', label="Max reading")
