@@ -304,7 +304,7 @@ def find_closest(xs, x):
     return idx
 
 
-def find_mean_background(image_array, lower, upper):
+def find_mean_background(image_array, lower, upper, lower_background, upper_background):
     image_array_shape = np.shape(image_array)
     a = np.arange(0, lower)
     b = np.arange(upper, image_array_shape[0])
@@ -318,10 +318,10 @@ def find_mean_background(image_array, lower, upper):
     return average_background, confidence_background, prediction_background
 
 
-def find_background(image_array, lower, upper):
-    image_array_shape = np.shape(image_array)
-    a = np.arange(0, lower)
-    b = np.arange(upper, image_array_shape[0])
+def find_background(image_array, lower, upper, lower_background, upper_background):
+
+    a = np.arange(lower_background, lower)
+    b = np.arange(upper, upper_background)
     slice_height_index_array = np.concatenate((a, b))
     background_array = image_array[slice_height_index_array, :, 2]
     background_array_shape = np.shape(background_array)

@@ -18,7 +18,7 @@ import scipy.signal
 path = 'Pictures/'
 
 # Load Image
-picture_index = 129
+picture_index = 133
 pictures = print_files(path, 'bmp')
 original_image = Image.open(path + pictures[picture_index])
 original_image = original_image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)  # flip image and manually rotate
@@ -127,7 +127,7 @@ saturated_array_convolved = saturated_array_pad_convolved[length_convolve:length
 saturated_list = np.where(saturated_array_convolved >= unsaturation_percentage_limit)
 
 #left_saturation_crop = saturated_list[0][0] + 800
-left_saturation_crop = 400
+left_saturation_crop = 800
 right_saturation_crop = 2000
 #right_saturation_crop = saturated_list[0][-1]
 
@@ -147,11 +147,7 @@ plt.legend()
 
 cropped_image_height = np.shape(rotated_image_array)[0]
 # Find Background
-average_background, confidence_background, prediction_background = find_mean_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], cropped_image_height - background_upper, cropped_image_height - background_lower)
-print("Background: ", average_background, "+-", confidence_background)
-
-average_background_list, confidence_background_list, prediction_background_list = find_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], cropped_image_height - background_upper, cropped_image_height - background_lower)
-print("Background: ", average_background, "+-", confidence_background)
+average_background_list, confidence_background_list, prediction_background_list = find_background(rotated_image_array[:,left_saturation_crop:right_saturation_crop,:], cropped_image_height - upper, cropped_image_height - lower, cropped_image_height - background_upper, cropped_image_height - background_lower)
 
 # Plot Data
 x_length_crop_mu_array = x_mu_array[left_saturation_crop:right_saturation_crop] # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
