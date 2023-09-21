@@ -18,20 +18,27 @@ import scipy.signal
 path = 'Pictures/'
 
 # Load Image
-picture_index = 133
+picture_index = 124
 pictures = print_files(path, 'bmp')
+print(pictures[picture_index])
 original_image = Image.open(path + pictures[picture_index])
 original_image = original_image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)  # flip image and manually rotate
 original_image_array = np.asarray(original_image)
+
+original_intensity_array = get_intensity_array(original_image_array)
+plt.imshow(original_intensity_array)
+
+
 
 # Size of Image
 window_num_pixel_height = np.shape(original_image_array)[0]  # 2048
 window_num_pixel_width = np.shape(original_image_array)[1]  # 2448
 
 # Distance Calibration
-chip_length_mum = 3870 # mu m
+chip_length_mum = 870 # mu m
 
 # Chip Detection
+
 #find_chip(original_image)
 
 # Detect the pixel of input
@@ -51,7 +58,7 @@ distance_input_output_pixel = np.sqrt((input_height_index - output_height_index)
 
 # Length Calibration
 mum_pr_pixel = chip_length_mum / distance_input_output_pixel
-
+print("mum pr pixel: ",mum_pr_pixel)
 # Find the waveguide
 left_index_guess = 300
 separation = 50
@@ -127,8 +134,8 @@ saturated_array_convolved = saturated_array_pad_convolved[length_convolve:length
 saturated_list = np.where(saturated_array_convolved >= unsaturation_percentage_limit)
 
 #left_saturation_crop = saturated_list[0][0] + 800
-left_saturation_crop = 800
-right_saturation_crop = 2000
+left_saturation_crop = 200
+right_saturation_crop = 1000
 #right_saturation_crop = saturated_list[0][-1]
 
 # Plot Saturation

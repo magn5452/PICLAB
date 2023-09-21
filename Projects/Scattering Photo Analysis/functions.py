@@ -49,7 +49,7 @@ def find_waveguide_angle(image_array, left_index_guess, left_right_separation, n
     x_index_array = []
     max_height_index_array = []
     for index in range(0, number_of_points):
-        x_index = left_index_guess + index*left_right_separation
+        x_index = left_index_guess + index * left_right_separation
         x_index_array.append(x_index)
         max_array = np.flip(np.mean(smoothed_image_array[:, x_index: left_index_guess + x_index + 1], axis=1))
         max_height_index = np.argmax(max_array - np.mean(max_array))
@@ -257,6 +257,104 @@ def linear_function(x, a, b):
     return a * x + b
 
 
+def quadratic_function(x, a, b, c):
+    return a * x ** 2 + b * x + c
+
+
+def sfg_model(x, a, b, c):
+    return a * x ** 2 * np.exp(-b * x) + c
+
+
+def sfg_model_off_set(x, a, b, c):
+    return a * (x - c) ** 2 * np.exp(-b * (x - c))
+
+
+def moving_average(f, N):
+    return np.convolve(f, np.ones((N,)) / N)[(N - 1):]
+
+
+def pr_mum_to_dB_pr_cm(alpha_pr_mum):
+    alpha_pr_m = -alpha_pr_mum * 1e4
+    alpha_dBm_pr_cm = - 10 * np.log10(np.exp(-alpha_pr_m))
+    return alpha_dBm_pr_cm
+
+
+def moving_average_padding(f, N):
+    Nhalf = int(np.rint(N / 2))
+    print(Nhalf)
+    f_padded = np.pad(f, (Nhalf - 1, Nhalf), mode='constant',
+                      constant_values=(np.mean(f[0:Nhalf]), np.mean(f[-Nhalf:-1])))
+    return np.convolve(f_padded, np.ones((N,)) / N, mode='valid')
+
+
+def sfg_model_confidence_bound(x, fit_parameters, fit_parameters_covariance):
+    a = fit_parameters[0]
+    b = fit_parameters[1]
+    c = fit_parameters[2]
+    f = sfg_model(x, a, b, c)
+
+    var_a = fit_parameters_covariance[0, 0]
+    var_b = fit_parameters_covariance[1, 1]
+    var_c = fit_parameters_covariance[2, 2]
+    cov_ab = fit_parameters_covariance[0, 1]
+    cov_ac = fit_parameters_covariance[0, 2]
+    cov_bc = fit_parameters_covariance[1, 2]
+
+    dfda = f / a
+    dfdb = -f * x
+    dfdc = 1
+    return np.sqrt(dfda ** 2 * var_a + dfdb ** 2 * var_b + dfdc ** 2 * var_c + 2 * (
+            dfda * dfdb * cov_ab + dfda * dfdc * cov_ac + dfdb * dfdc * cov_bc))
+
+
+def sfg_model_off_set_confidence_bound(x, fit_parameters, fit_parameters_covariance):
+    a = fit_parameters[0]
+    b = fit_parameters[1]
+    c = fit_parameters[2]
+    f = sfg_model_off_set(x, a, b, c)
+
+    var_a = fit_parameters_covariance[0, 0]
+    var_b = fit_parameters_covariance[1, 1]
+    var_c = fit_parameters_covariance[2, 2]
+    cov_ab = fit_parameters_covariance[0, 1]
+    cov_ac = fit_parameters_covariance[0, 2]
+    cov_bc = fit_parameters_covariance[1, 2]
+
+    dfda = f / a
+    dfdb = -f * (x - c)
+    dfdc = (b - 2 / (x - c)) * f
+    return np.sqrt(dfda ** 2 * var_a + dfdb ** 2 * var_b + dfdc ** 2 * var_c + 2 * (
+            dfda * dfdb * cov_ab + dfda * dfdc * cov_ac + dfdb * dfdc * cov_bc))
+
+
+def confidence_bounds_quadractic(x, fit_parameters, fit_parameters_covariance):
+    var_a = fit_parameters_covariance[0, 0]
+    var_b = fit_parameters_covariance[1, 1]
+    var_c = fit_parameters_covariance[2, 2]
+    cov_ab = fit_parameters_covariance[0, 1]
+    cov_ac = fit_parameters_covariance[0, 2]
+    cov_bc = fit_parameters_covariance[1, 2]
+    f = quadratic_function(x, fit_parameters[0], fit_parameters[1], fit_parameters[2])
+    diff_a = x ** 2
+    diff_b = x
+    diff_c = 1
+    return np.sqrt(diff_a ** 2 * var_a + diff_b ** 2 * var_b + diff_c ** 2 * var_c + 2 * (
+            diff_a * diff_b * cov_ab + diff_a * diff_c * cov_ac + diff_b * diff_c * cov_bc))
+
+
+def confidence_bounds(x, fit_parameters, fit_parameters_covariance):
+    num_parameters = np.size(fit_parameters)
+    X = linear_model(x, num_parameters)
+    return np.sqrt(np.diag(np.transpose(X) @ fit_parameters_covariance @ X))
+
+
+def linear_model(x, num_parameters):
+    X = [np.ones(np.size(x))]
+    for index in range(1, num_parameters):
+        X.append(x ** index)
+    return np.array(X)
+
+
 def linear_function_confidence_bounds_sigma(x, a, b, var_cov_matrix):
     var_a = var_cov_matrix[0, 0]
     var_b = var_cov_matrix[1, 1]
@@ -319,7 +417,6 @@ def find_mean_background(image_array, lower, upper, lower_background, upper_back
 
 
 def find_background(image_array, lower, upper, lower_background, upper_background):
-
     a = np.arange(lower_background, lower)
     b = np.arange(upper, upper_background)
     slice_height_index_array = np.concatenate((a, b))
