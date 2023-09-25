@@ -253,6 +253,10 @@ def exponential_function(x, a, b):
     return a * np.exp(-b * x)
 
 
+def exponential_function_offset(x,a,b,c):
+    return a * np.exp(b * x) + c
+    
+
 def linear_function(x, a, b):
     return a * x + b
 
@@ -381,6 +385,19 @@ def exponential_function_confidence_bounds_sigma(x, a, b, var_cov_matrix):
     dfdb = (-x * f)
     return np.sqrt(var_a * dfda ** 2 + var_b * dfdb ** 2 + 2 * cov_ab * dfda * dfdb)
 
+
+def exponential_function_offset_confidence_bounds_sigma(x, a, b,c, var_cov_matrix):
+    var_a = var_cov_matrix[0, 0]
+    var_b = var_cov_matrix[1, 1]
+    var_c = var_cov_matrix[2, 2]
+    cov_ab = var_cov_matrix[1, 0]
+    cov_ac = var_cov_matrix[0, 2]
+    cov_bc = var_cov_matrix[1, 2]
+    f = exponential_function_offset(x, a, b, c)
+    dfda = (f / a)
+    dfdb = (x * f)
+    dfdc = 1
+    return np.sqrt(var_a * dfda ** 2 + var_b * dfdb ** 2 + var_c * dfdc ** 2 + 2 * cov_ab * dfda * dfdb + 2 * cov_ac * dfda * dfdc + 2 * cov_bc * dfdb * dfdc)
 
 def exponential_function_prediction_bounds_sigma(x, a, b, var_cov_matrix, mean_squared_error):
     var_a = var_cov_matrix[0, 0]
