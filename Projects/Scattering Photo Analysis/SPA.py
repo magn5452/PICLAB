@@ -2,7 +2,7 @@
 """
 Created on Fri Sep 29 09:08:25 2023
 
-@author: Frederik P
+@author: Peter Tønning, Kevin Bach Gravesen, Magnus Linnet Madsen, Frederik P
 """
 
 import numpy
@@ -74,7 +74,7 @@ class SPA:
         return ma
     
     
-    def EMA(self,data,smoothing=0.5):
+    def EMA(self,data,smoothing=0.01):
         i = 1
         ma = []
         
@@ -288,11 +288,14 @@ class SPA:
         
         y_exp = self.EMA(y_iqr,0.01)
         x_exp = x[:len(y_exp)]
-    
+        
+        
+        y_mov = self.SMA(y_raw,100)
+        x_mov = x[:len(y_mov)]
        
         
 
-        fit_x = np.delete(x_iqr, [])
+        fit_x = np.delete(x_exp, [])
         fit_y = np.delete(y_exp, [])
         
         initial_guess = [25, 0.0006]
@@ -322,7 +325,7 @@ class SPA:
             plt.show()
             
             plt.figure(figsize=(10,6))
-            plt.plot(fit_x, fit_y, 'b-', label="Smoothed and IQR outlier removed data")
+            plt.plot(fit_x, fit_y, 'b-', label="EMA smoothed data with outliers removed")
             plt.plot(fit_x, fit, 'r-', label=f"Fit with: {alpha_dB:.3f} dB/cm +- {alpha_dB-alpha_lower:.3f}, R\u00b2: {r_squared:.3f}")
             plt.plot(fit_x, fit_upper, 'r', linestyle='dashed', label="95% Confidence Bound")
             plt.plot(fit_x, fit_lower, 'r', linestyle='dashed')
@@ -334,8 +337,9 @@ class SPA:
             
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
-            plt.plot(x_iqr,y_iqr,"r-",label="Sliced IQR outlier removal")
-            plt.plot(x_exp,y_exp, "g-",label="Exponential Moving Average on outlier removed data")
+            #plt.plot(x_iqr,y_iqr,"r-",label="Sliced IQR outlier removal")
+            plt.plot(x_mov,y_mov,"r-",label="Moving average")
+            plt.plot(x_exp,y_exp, "g-",label="Exponential Moving Average")
             plt.xlabel('x Length [um]')
             plt.ylabel('Mean of blue intensity')
             plt.legend()
@@ -355,127 +359,129 @@ class SPA:
        
         return alpha_dB, r_squared, alpha_upper, alpha_lower
 
-path = "C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/convergence_test/data/2023-10-10_11_ST2_Toptica_980_80mW_1450nm_TE_Focused_Exp1000000mus_gain23.9dB.bmp"
-image = Image.open(path)
+def main():
 
-
-spa = SPA(True,3870)
-
-image = spa.rotate_image(image,"flip")
-#plt.imshow(image)
-
-begin = time()
-print(spa.analyze_image(image,400,100,20,10))
-
-print(f"Timing analyze_image: {time()-begin:.4f} s")
- 
+    path = "C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/convergence_test/data/2023-10-10_11_ST2_Toptica_980_80mW_1450nm_TE_Focused_Exp1000000mus_gain23.9dB.bmp"
+    image = Image.open(path)
     
+    
+    spa = SPA(False,3870)
+    
+    image = spa.rotate_image(image,"flip")
+    #plt.imshow(image)
+    
+    begin = time()
+    print(spa.analyze_image(image,400,100,20,10))
+    print(f"Timing analyze_image: {time()-begin:.4f} s")
+ 
+
 
 #%% Right and left indent
 
-image = Image.open(path)
-
-
-spa = SPA(False,3870)
-
-image = spa.rotate_image(image,"flip")
-
-
-right_indent = list(range(100,510,10))
-left_indent = list(range(200,810,10))
-
-
-row = len(right_indent)
-col = len(left_indent)
-
-alpha_matrix = np.empty((row,col))
-
-for i in range(len(right_indent)):
-    for j in range(len(left_indent)):
-        print(i,j)
-        alpha_matrix[i,j], r_squared, alpha_upper, alpha_lower = spa.analyze_image(image, left_indent[j], right_indent[i], 20,10)
-        
-#%%
-import seaborn as sns
-from matplotlib.colors import LogNorm 
-import pandas as pd
-
-
-dataframe = pd.DataFrame(alpha_matrix)
-dataframe.index = right_indent
-dataframe.columns = left_indent
-plt.figure(figsize=(10,6))
-
-log_norm = LogNorm(vmin=10,vmax=40)
-ax = sns.heatmap(dataframe, cbar_kws={'label': 'alpha (dB/cm)'},norm=log_norm)
-
-plt.xlabel("Left indent")
-plt.ylabel("Right indent")
-plt.show()
-
-#%% Moving average 
-
-image = Image.open(path)
-
-spa = SPA(False,3870)
-
-image = spa.rotate_image(image,"flip")
-
-
-m_bins = np.array(range(1,101,1))*0.001
-
-
-
-
-
-
-alphas = []
-r_squared = []
-upper_list = []
-lower_list = []
-
-for m in m_bins:
-    alpha, r2, upper, lower =  spa.analyze_image(image, 200, 100, 20, m)
-    alphas.append(alpha)
-    upper_list.append(upper)
-    lower_list.append(lower)
-    r_squared.append(r2)
-
-#%%
-fig, ax1 = plt.subplots(figsize=(10,6))
-
-plt.grid()
-
-# Plot the first dataset on the left y-axis
-ax1.plot(m_bins, alphas, color='b', label='$\\alpha$ values')
-ax1.plot(m_bins,upper_list, "b--",label="confidence_interval")
-ax1.plot(m_bins,lower_list, "b--")
-ax1.set_xlabel('Smoothing value')
-ax1.set_ylabel('$\\alpha$ (dB/cm)', color='b')
-ax1.tick_params(axis='y', labelcolor='b')
-
-# Create a second axis (right y-axis) sharing the same x-axis
-ax2 = ax1.twinx()
-
-# Plot the second dataset on the right y-axis
-ax2.plot(m_bins, r_squared, color='r', label='R\u00b2 values')
-ax2.set_ylabel('R\u00b2', color='r')
-ax2.tick_params(axis='y', labelcolor='r')
-
-# Add a legend for both datasets
-lines1, labels1 = ax1.get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
-lines = lines1 + lines2
-labels = labels1 + labels2
-ax2.legend(lines, labels, loc='upper right')
-
-# Title for the plot
-#plt.title('Moving average convergence test')
-#ax1.set_ylim(bottom=0)
-#ax2.set_ylim(bottom=0)
-# Show the plot
-plt.show()
-
-
+    image = Image.open(path)
     
+    
+    spa = SPA(False,3870)
+    
+    image = spa.rotate_image(image,"flip")
+    
+    
+    right_indent = list(range(100,510,10))
+    left_indent = list(range(200,810,10))
+    
+    
+    row = len(right_indent)
+    col = len(left_indent)
+    
+    alpha_matrix = np.empty((row,col))
+    
+    for i in range(len(right_indent)):
+        for j in range(len(left_indent)):
+            print(i,j)
+            alpha_matrix[i,j], r_squared, alpha_upper, alpha_lower = spa.analyze_image(image, left_indent[j], right_indent[i], 20,10)
+            
+    #%%
+    import seaborn as sns
+    from matplotlib.colors import LogNorm 
+    import pandas as pd
+    
+    
+    dataframe = pd.DataFrame(alpha_matrix)
+    dataframe.index = right_indent
+    dataframe.columns = left_indent
+    plt.figure(figsize=(10,6))
+    
+    log_norm = LogNorm(vmin=10,vmax=40)
+    ax = sns.heatmap(dataframe, cbar_kws={'label': 'alpha (dB/cm)'},norm=log_norm)
+    
+    plt.xlabel("Left indent")
+    plt.ylabel("Right indent")
+    plt.show()
+    
+    #%% Moving average 
+    
+    image = Image.open(path)
+    
+    spa = SPA(False,3870)
+    
+    image = spa.rotate_image(image,"flip")
+    
+    
+    m_bins = np.array(range(10,1010,10))
+    
+    
+    
+    
+    
+    
+    alphas = []
+    r_squared = []
+    upper_list = []
+    lower_list = []
+    
+    for m in m_bins:
+        alpha, r2, upper, lower =  spa.analyze_image(image, 400, 100, 20, m)
+        alphas.append(alpha)
+        upper_list.append(upper)
+        lower_list.append(lower)
+        r_squared.append(r2)
+    
+    #%%
+    fig, ax1 = plt.subplots(figsize=(10,6))
+    
+    plt.grid()
+    
+    # Plot the first dataset on the left y-axis
+    ax1.plot(m_bins, alphas, color='b', label='$\\alpha$ values')
+    ax1.plot(m_bins,upper_list, "b--",label="confidence_interval")
+    ax1.plot(m_bins,lower_list, "b--")
+    ax1.set_xlabel('Window length value')
+    ax1.set_ylabel('$\\alpha$ (dB/cm)', color='b')
+    ax1.tick_params(axis='y', labelcolor='b')
+    
+    # Create a second axis (right y-axis) sharing the same x-axis
+    ax2 = ax1.twinx()
+    
+    # Plot the second dataset on the right y-axis
+    ax2.plot(m_bins, r_squared, color='r', label='R\u00b2 values')
+    ax2.set_ylabel('R\u00b2', color='r')
+    ax2.tick_params(axis='y', labelcolor='r')
+    
+    # Add a legend for both datasets
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    lines = lines1 + lines2
+    labels = labels1 + labels2
+    ax2.legend(lines, labels, loc='upper right')
+    
+    # Title for the plot
+    #plt.title('Moving average convergence test')
+    #ax1.set_ylim(bottom=0)
+    #ax2.set_ylim(bottom=0)
+    # Show the plot
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()
 
