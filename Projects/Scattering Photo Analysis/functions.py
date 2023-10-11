@@ -41,11 +41,12 @@ def find_left_right_index(window_num_pixel_width, window_num_pixel_height, image
     return left_max_index, right_max_index
 
 
-def find_waveguide_angle(image_array, left_index_guess, left_right_separation, number_of_points):
+def find_waveguide_angle(image_array, left_index_guess, left_right_separation, number_of_points,show_plots=True):
     kernel = np.ones([1, 50]) / (1 * 50)
     smoothed_image_array = convolve2d(image_array, kernel)
-    plt.figure()
-    plt.imshow(smoothed_image_array)
+    if show_plots:
+        plt.figure()
+        plt.imshow(smoothed_image_array)
     x_index_array = []
     max_height_index_array = []
     for index in range(0, number_of_points):
@@ -139,7 +140,7 @@ def find_chip(image):
     plt.plot(peaks, smart[peaks])
 
 
-def insertion_detection(image):
+def insertion_detection(image,show_plots=True):
     # Convert the image to a NumPy array
     image_array = np.array(image)
     image_array_shape = np.shape(image_array)
@@ -147,8 +148,8 @@ def insertion_detection(image):
     scale_factor = 2 ** 3
     new_height = int(np.rint(image_array_shape[0] / scale_factor))  # New width in pixels
     new_width = int(np.rint(image_array_shape[1] / scale_factor))  # New height in pixels
-    print(new_height)
-    print(new_width)
+    #print(new_height)
+    #print(new_width)
     # Resize the image to the new dimensions
     resized_image = image.resize((new_width, new_height), Image.LANCZOS)
     resized_image_array = np.array(resized_image)
@@ -167,9 +168,9 @@ def insertion_detection(image):
     filtered_image_array = np.stack(filtered_channels, axis=2)
 
     intensity_filtered_image_array = get_intensity_array(filtered_image_array)
-
-    plt.figure()
-    plt.imshow(intensity_filtered_image_array, cmap="jet", vmin=0, vmax=255)
+    if show_plots:
+        plt.figure()
+        plt.imshow(intensity_filtered_image_array, cmap="jet", vmin=0, vmax=255)
 
     resized_input_index = np.unravel_index(np.argmax(intensity_filtered_image_array, axis=None),
                                            intensity_filtered_image_array.shape)
@@ -183,23 +184,24 @@ def insertion_detection(image):
     lower_index_limit = int((input_height_index - height_tolerance_output) / scale_factor)
     upper_index_limit = int((input_height_index + height_tolerance_output) / scale_factor)
     height_tolerance_output = 100
-    plt.plot([0, new_width], [upper_index_limit, upper_index_limit], 'r-')
-    plt.plot([0, new_width], [lower_index_limit, lower_index_limit], 'r-')
-    plt.plot([left_index_limit, left_index_limit], [lower_index_limit, upper_index_limit], 'r-')
-    plt.plot([right_index_limit, right_index_limit], [lower_index_limit, upper_index_limit], 'r-')
-    plt.plot([0, 0], [0, kernel_size], 'b-')
-    plt.plot([kernel_size, kernel_size], [0, kernel_size], 'b-')
-    plt.plot([0, kernel_size], [0, 0], 'b-')
-    plt.plot([0, kernel_size], [kernel_size, kernel_size], 'b-')
+    if show_plots:
+        plt.plot([0, new_width], [upper_index_limit, upper_index_limit], 'r-')
+        plt.plot([0, new_width], [lower_index_limit, lower_index_limit], 'r-')
+        plt.plot([left_index_limit, left_index_limit], [lower_index_limit, upper_index_limit], 'r-')
+        plt.plot([right_index_limit, right_index_limit], [lower_index_limit, upper_index_limit], 'r-')
+        plt.plot([0, 0], [0, kernel_size], 'b-')
+        plt.plot([kernel_size, kernel_size], [0, kernel_size], 'b-')
+        plt.plot([0, kernel_size], [0, 0], 'b-')
+        plt.plot([0, kernel_size], [kernel_size, kernel_size], 'b-')
     output_array = intensity_filtered_image_array[lower_index_limit: upper_index_limit,
                    left_index_limit: right_index_limit]
     resized_output_index = np.unravel_index(np.argmax(output_array, axis=None), output_array.shape)
 
     output_height_index = int((resized_output_index[0] + lower_index_limit) * scale_factor)
     output_width_index = int((resized_output_index[1] + left_index_limit) * scale_factor)
-
-    plt.plot(resized_input_index[1], resized_input_index[0], 'r.')
-    plt.plot(resized_output_index[1] + left_index_limit, resized_output_index[0] + lower_index_limit, 'r.')
+    if show_plots:
+        plt.plot(resized_input_index[1], resized_input_index[0], 'r.')
+        plt.plot(resized_output_index[1] + left_index_limit, resized_output_index[0] + lower_index_limit, 'r.')
     return input_width_index, input_height_index, output_width_index, output_height_index
 
 
