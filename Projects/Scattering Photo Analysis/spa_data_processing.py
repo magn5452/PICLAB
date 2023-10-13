@@ -10,7 +10,6 @@ from PIL import Image
 from time import time
 import sys
 sys.path.append("C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/PICLAB/Projects/Scattering Photo Analysis")
-from functions import *
 from SPA import SPA
 
 
@@ -133,3 +132,28 @@ ax2.legend(lines, labels, loc='upper right')
 #ax2.set_ylim(bottom=0)
 # Show the plot
 plt.show()
+
+
+#%% 
+from PIL import Image
+import sys
+sys.path.append("C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/PICLAB/Projects/Scattering Photo Analysis")
+from SPA import SPA
+import os
+
+image_folder = "C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/"
+
+image_encoding = ['.png', '.jpeg', '.jpg', '.bmp']
+
+for file in os.listdir(image_folder):
+    if any([x in file for x in image_encoding]):
+        image_path = image_folder + file
+        image = Image.open(image_path)
+
+
+        spa = SPA(True,3870) #set flag to False to tunr off plotting
+
+        image = spa.rotate_image(image,"flip")
+        #plt.imshow(image)
+
+        print(spa.analyze_image(image,400,100,20,10))
