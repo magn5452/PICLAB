@@ -12,7 +12,8 @@ from PIL import Image
 from scipy.optimize import curve_fit, least_squares
 from scipy.signal import find_peaks
 from time import time
-
+import sys
+sys.path.append("C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/PICLAB/Projects/Scattering Photo Analysis")
 from functions import *
  
 from scipy.fft import ifft2,fftshift, fft2, ifftshift
@@ -276,23 +277,14 @@ class SPA:
         x = x_length_crop_mu_array
 
         image_data_raw = rotated_image_array[:,:,2]
-
-        image_data, background = self.remove_background(image_data_raw)
         
         y_raw = np.mean(image_data_raw[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
-        y = np.mean(image_data[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
-        y_std = np.std(image_data[cropped_image_height - lower: cropped_image_height - upper, left_saturation_crop:right_saturation_crop], axis=0)
         
         
         x_iqr,y_iqr = self.remove_outliers_IQR(x, y_raw, smoothing) 
         
         y_exp = self.EMA(y_iqr,0.01)
         x_exp = x[:len(y_exp)]
-        
-        
-        y_mov = self.SMA(y_raw,100)
-        x_mov = x[:len(y_mov)]
-       
         
 
         fit_x = np.delete(x_exp, [])
@@ -315,6 +307,14 @@ class SPA:
         alpha_lower = 10 * np.log10(np.exp((alpha_lower) * 1e4))
         
         if self.show_plots:
+            y_mov = self.SMA(y_raw,100)
+            x_mov = x[:len(y_mov)]
+           
+            y_fft = abs(fftshift(fft(y_raw)))
+            freq = fftshift(fftfreq(len(y_raw)))
+            image_data, background = self.remove_background(image_data_raw)
+            y = np.mean(image_data[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
+            
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
             plt.axhline(background[0,0],label="Background", color="y")
@@ -345,6 +345,18 @@ class SPA:
             plt.legend()
             plt.show()
             
+            middle = int((len(y_fft)-1)/2)
+            
+            plt.figure(figsize=(10,6))
+            #y_fft[middle:middle+2] = 0
+            plt.plot(y_fft[middle:], 'b-', label="FFT of data")
+            plt.yscale("log")
+            #.xlabel('Frequency [Hz]')
+            plt.ylabel('Amplitude')
+            plt.legend()
+            plt.show()
+            
+            
         
             print("Fit Parameters:", fit_parameters)
             print("Variance-Covariance Matrix Fit Parameters:", fit_parameters_cov_var_matrix)
@@ -358,130 +370,3 @@ class SPA:
         
        
         return alpha_dB, r_squared, alpha_upper, alpha_lower
-
-def main():
-
-    path = "C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/convergence_test/data/2023-10-10_11_ST2_Toptica_980_80mW_1450nm_TE_Focused_Exp1000000mus_gain23.9dB.bmp"
-    image = Image.open(path)
-    
-    
-    spa = SPA(False,3870)
-    
-    image = spa.rotate_image(image,"flip")
-    #plt.imshow(image)
-    
-    begin = time()
-    print(spa.analyze_image(image,400,100,20,10))
-    print(f"Timing analyze_image: {time()-begin:.4f} s")
- 
-
-
-#%% Right and left indent
-
-    image = Image.open(path)
-    
-    
-    spa = SPA(False,3870)
-    
-    image = spa.rotate_image(image,"flip")
-    
-    
-    right_indent = list(range(100,510,10))
-    left_indent = list(range(200,810,10))
-    
-    
-    row = len(right_indent)
-    col = len(left_indent)
-    
-    alpha_matrix = np.empty((row,col))
-    
-    for i in range(len(right_indent)):
-        for j in range(len(left_indent)):
-            print(i,j)
-            alpha_matrix[i,j], r_squared, alpha_upper, alpha_lower = spa.analyze_image(image, left_indent[j], right_indent[i], 20,10)
-            
-    #%%
-    import seaborn as sns
-    from matplotlib.colors import LogNorm 
-    import pandas as pd
-    
-    
-    dataframe = pd.DataFrame(alpha_matrix)
-    dataframe.index = right_indent
-    dataframe.columns = left_indent
-    plt.figure(figsize=(10,6))
-    
-    log_norm = LogNorm(vmin=10,vmax=40)
-    ax = sns.heatmap(dataframe, cbar_kws={'label': 'alpha (dB/cm)'},norm=log_norm)
-    
-    plt.xlabel("Left indent")
-    plt.ylabel("Right indent")
-    plt.show()
-    
-    #%% Moving average 
-    
-    image = Image.open(path)
-    
-    spa = SPA(False,3870)
-    
-    image = spa.rotate_image(image,"flip")
-    
-    
-    m_bins = np.array(range(10,1010,10))
-    
-    
-    
-    
-    
-    
-    alphas = []
-    r_squared = []
-    upper_list = []
-    lower_list = []
-    
-    for m in m_bins:
-        alpha, r2, upper, lower =  spa.analyze_image(image, 400, 100, 20, m)
-        alphas.append(alpha)
-        upper_list.append(upper)
-        lower_list.append(lower)
-        r_squared.append(r2)
-    
-    #%%
-    fig, ax1 = plt.subplots(figsize=(10,6))
-    
-    plt.grid()
-    
-    # Plot the first dataset on the left y-axis
-    ax1.plot(m_bins, alphas, color='b', label='$\\alpha$ values')
-    ax1.plot(m_bins,upper_list, "b--",label="confidence_interval")
-    ax1.plot(m_bins,lower_list, "b--")
-    ax1.set_xlabel('Window length value')
-    ax1.set_ylabel('$\\alpha$ (dB/cm)', color='b')
-    ax1.tick_params(axis='y', labelcolor='b')
-    
-    # Create a second axis (right y-axis) sharing the same x-axis
-    ax2 = ax1.twinx()
-    
-    # Plot the second dataset on the right y-axis
-    ax2.plot(m_bins, r_squared, color='r', label='R\u00b2 values')
-    ax2.set_ylabel('R\u00b2', color='r')
-    ax2.tick_params(axis='y', labelcolor='r')
-    
-    # Add a legend for both datasets
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    lines = lines1 + lines2
-    labels = labels1 + labels2
-    ax2.legend(lines, labels, loc='upper right')
-    
-    # Title for the plot
-    #plt.title('Moving average convergence test')
-    #ax1.set_ylim(bottom=0)
-    #ax2.set_ylim(bottom=0)
-    # Show the plot
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()
-
