@@ -61,6 +61,9 @@ class SPA:
             i += 1
         return ma
     
+    def moving_sum(self,data,M):
+        return np.convolve(data,np.ones(M,dtype=float),"valid")/M
+    
     def CMA(self,data):
         i = 1
         ma = []
@@ -167,6 +170,9 @@ class SPA:
         
         input_width_index, input_height_index, output_width_index, output_height_index = insertion_detection(image.copy(),self.show_plots)
         
+        #input_width_index = 50
+        #output_width_index = output_width_index +120
+        
         points = [np.array((input_width_index,input_height_index)),np.array((output_width_index,output_height_index))]
         self.set_um_per_pixel(points)
         
@@ -227,6 +233,9 @@ class SPA:
  
         if self.show_plots:
             plt.figure(figsize=(10,6))
+            #plt.ylim([1000,2000])
+            #plt.xticks([])
+            #plt.yticks([])
             #plt.title("Original Image with cropped section")
             plt.plot((left_indent,left_indent),(top_indent,bottom_indent),"r")
             plt.plot((left_indent,right_indent),(bottom_indent,bottom_indent),"r")
@@ -248,19 +257,21 @@ class SPA:
             # Plot rotated picture
             plt.figure()
             plt.imshow(get_intensity_array(rotated_image_array), cmap="jet", vmin=0, vmax=10, extent=[x_mu_array[0], x_mu_array[-1], y_mu_array[0], y_mu_array[-1]])
-            plt.title("Rotated Image")
-            plt.xlabel('x [um]')
-            plt.ylabel('y [um]')
-     
-            plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[upper_index_array], 'r-')
-            plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[lower_index_array], 'r-')
+            #plt.title("Rotated Image")
+            plt.xticks([])
+            plt.yticks([])
+            #plt.xlabel('x [um]')
+            #plt.ylabel('y [um]')
+            #plt.colorbar(fraction=0.016, pad=0.01)
+            #plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[upper_index_array], 'r-')
+            #plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[lower_index_array], 'r-')
  
 
     
         return rotated_image_array, x_mu_array, y_mu_array, upper, lower
     
     
-    def analyze_image(self, image,input_indent,output_indent,interval,smoothing):
+    def analyze_image(self, image,input_indent,output_indent,interval,smoothing, sum_width):
         
         rotated_image_array, x_mu_array, y_mu_array, upper, lower = self.crop_and_rotate(image,input_indent,output_indent,interval)
         
@@ -275,10 +286,19 @@ class SPA:
         # Plot Data
         x_length_crop_mu_array = x_mu_array[left_saturation_crop:right_saturation_crop] # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
         x = x_length_crop_mu_array
-
-        image_data_raw = rotated_image_array[:,:,2]
         
-        y_raw = np.mean(image_data_raw[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
+        
+        #channel12 = np.add(rotated_image_array[:,:,0],rotated_image_array[:,:,1])
+        
+        
+        #image_data_raw = rotated_image_array[:,:,2]
+        
+        #image_data_raw = np.add(channel12,rotated_image_array[:,:,2])
+        
+        image_data_raw = np.sum(rotated_image_array,2)
+       
+        
+        y_raw = np.sum(image_data_raw[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
         
         
         x_iqr,y_iqr = self.remove_outliers_IQR(x, y_raw, smoothing) 
@@ -286,12 +306,16 @@ class SPA:
         y_exp = self.EMA(y_iqr,0.01)
         x_exp = x[:len(y_exp)]
         
+        
+        
 
         fit_x = np.delete(x_exp, [])
         fit_y = np.delete(y_exp, [])
         
+        weights = (fit_x/np.max(fit_y))**2
+        
         initial_guess = [25, 0.0006]
-        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier,  = curve_fit(exponential_function, fit_x, fit_y, p0=initial_guess, full_output=True)
+        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier,  = curve_fit(exponential_function, fit_x, fit_y, p0=initial_guess, full_output=True, sigma=weights, absolute_sigma=True)
         fit = exponential_function(fit_x, fit_parameters[0], fit_parameters[1])
         
         fit_upper,fit_lower, alpha_upper, alpha_lower = self.calculate_confidence_interval(fit_parameters, fit_parameters_cov_var_matrix, fit_x, 1.960)
@@ -307,7 +331,7 @@ class SPA:
         alpha_lower = 10 * np.log10(np.exp((alpha_lower) * 1e4))
         
         if self.show_plots:
-            y_mov = self.SMA(y_raw,100)
+            y_mov = self.SMA(y_iqr,sum_width)
             x_mov = x[:len(y_mov)]
            
             y_fft = abs(fftshift(fft(y_raw)))
@@ -317,11 +341,11 @@ class SPA:
             
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
-            plt.axhline(background[0,0],label="Background", color="y")
+            #plt.axhline(background[0,0],label="Background", color="y")
             plt.legend()
             plt.xlabel('x Length [um]')
             plt.ylim([0, np.max(y_raw)])
-            plt.ylabel('Mean of blue intensity')
+            plt.ylabel('Sum of blue intensity')
             plt.show()
             
             plt.figure(figsize=(10,6))
@@ -337,8 +361,8 @@ class SPA:
             
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
-            #plt.plot(x_iqr,y_iqr,"r-",label="Sliced IQR outlier removal")
-            plt.plot(x_mov,y_mov,"r-",label="Moving average")
+            plt.plot(x_iqr,y_iqr,"y-",label="IQR outlier removal")
+            plt.plot(x_mov,y_mov,"r-",label=f"Moving average, window length: {sum_width}")
             plt.plot(x_exp,y_exp, "g-",label="Exponential Moving Average")
             plt.xlabel('x Length [um]')
             plt.ylabel('Mean of blue intensity')
@@ -356,7 +380,7 @@ class SPA:
             plt.legend()
             plt.show()
             
-            
+            self.plot_histogram(rotated_image_array)
         
             print("Fit Parameters:", fit_parameters)
             print("Variance-Covariance Matrix Fit Parameters:", fit_parameters_cov_var_matrix)
