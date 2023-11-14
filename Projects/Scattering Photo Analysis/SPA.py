@@ -10,12 +10,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.optimize import curve_fit, least_squares
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, savgol_filter
 from time import time
 import sys
 sys.path.append("C:/Users/frede/OneDrive/Skrivebord/Civil/Speciale/PICLAB/Projects/Scattering Photo Analysis")
 from functions import *
- 
+from scipy import signal
 from scipy.fft import ifft2,fftshift, fft2, ifftshift
 
 
@@ -24,12 +24,13 @@ class SPA:
     
     def __init__(self, show_plots, chiplength):
         self.show_plots = show_plots
-        self.chiplength = chiplength
+        self.chiplength = chiplength  # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
+        
 
         
     def set_um_per_pixel(self, points):
         # calculating Euclidean distance
-        dist_pixels = np.linalg.norm(points[0] - points[1])
+        dist_pixels = np.linalg.norm(points[0] - points[1]) 
         
         self.mum_per_pixel = self.chiplength / dist_pixels
     
@@ -91,7 +92,7 @@ class SPA:
             i += 1
         return ma
         
-    def remove_outliers_IQR(self,x , data,blocks):
+    def remove_outliers_IQR(self,x , data,blocks,num_neighbors):
         data_blocks = np.array_split(data,blocks)
         x_blocks = np.array_split(x,blocks)
         
@@ -107,17 +108,38 @@ class SPA:
 
             upper_array = np.where(data_blocks[i]>=upper)[0]
             lower_array = np.where(data_blocks[i]<=lower)[0]
-
+            
+            
             remove_array = np.concatenate((upper_array,lower_array))
+            new_remove_array = []
 
-            data_blocks[i] = np.delete(data_blocks[i],remove_array)
-            x_blocks[i] = np.delete(x_blocks[i],remove_array)
+            for index in remove_array:
+                neighbor_indexes = np.arange(index-num_neighbors,index+num_neighbors+1,1)
+                neighbor_indexes = [x for x in neighbor_indexes if x > 0 and x < len(data_blocks[i])]
+                new_remove_array += neighbor_indexes
+            
+            new_remove_array = list(set(new_remove_array))
+            data_blocks[i] = np.delete(data_blocks[i],new_remove_array)
+            x_blocks[i] = np.delete(x_blocks[i],new_remove_array)
+        
         
         
         return np.concatenate(x_blocks), np.concatenate(data_blocks)
         
+    def threshold_background(self,x ,data,blocks,background):
+        data_blocks = np.array_split(data,blocks)
+        x_blocks = np.array_split(x,blocks)
         
-    
+        
+        index = len(data_blocks)
+        for i in range(len(data_blocks)):
+            data_mean = np.mean(data_blocks[i])
+            if data_mean < background:
+                index = i
+                break
+        
+        return np.concatenate(x_blocks[:index]), np.concatenate(data_blocks[:index])
+        
     def plot_histogram(self, image):
         plt.figure(figsize=(10,6))
         plt.title("Histogram of RGB channels")
@@ -127,7 +149,7 @@ class SPA:
         plt.yscale("log")
         
     
-    def find_input_and_output(self,indent_list,image):
+    def manual_input_and_output(self,image):
         pass
     
     
@@ -148,19 +170,26 @@ class SPA:
         img_mod = abs(ifft2(fft_img_mod))
         return img_mod, background
     
+
     
     def calculate_confidence_interval(self,fit_parameters,fit_parameters_cov_var_matrix, x ,confidence_interval):
         var_a = fit_parameters_cov_var_matrix[0,0]
         var_b = fit_parameters_cov_var_matrix[1,1]
+        var_c = fit_parameters_cov_var_matrix[2,2]
+
 
         upper_a = fit_parameters[0]+confidence_interval*np.sqrt(var_a)
         lower_a = fit_parameters[0]-confidence_interval*np.sqrt(var_a)
 
         upper_b = fit_parameters[1]+confidence_interval*np.sqrt(var_b)
         lower_b = fit_parameters[1]-confidence_interval*np.sqrt(var_b)
+        
+        upper_c = fit_parameters[2]+confidence_interval*np.sqrt(var_c)
+        lower_c = fit_parameters[2]-confidence_interval*np.sqrt(var_c)
 
-        fit_upper = exponential_function(x,*[upper_a,upper_b])
-        fit_lower = exponential_function(x,*[lower_a,lower_b])
+
+        fit_upper = exponential_function_offset(x,*[upper_a,upper_b,upper_c])
+        fit_lower = exponential_function_offset(x,*[lower_a,lower_b,upper_c])
         
         return fit_upper,fit_lower, upper_b, lower_b 
     
@@ -170,8 +199,9 @@ class SPA:
         
         input_width_index, input_height_index, output_width_index, output_height_index = insertion_detection(image.copy(),self.show_plots)
         
-        #input_width_index = 50
-        #output_width_index = output_width_index +120
+        #input_width_index = 10
+        #input_height_index = 1300
+        #output_heigth_index = 1300
         
         points = [np.array((input_width_index,input_height_index)),np.array((output_width_index,output_height_index))]
         self.set_um_per_pixel(points)
@@ -193,12 +223,15 @@ class SPA:
         if bottom_indent > window_num_pixel_height:
             bottom_indent = window_num_pixel_height
         
+        
+        
+        
         cropped_image = image.crop((left_indent, top_indent, right_indent, bottom_indent))
         cropped_image_array = np.asarray(cropped_image)
  
        
         # Find the waveguide
-        left_index_guess = 100
+        left_index_guess = 175
         
         number_of_points = 15
         
@@ -217,13 +250,12 @@ class SPA:
  
         rotated_image_array = np.asarray(rotated_image)
         
-
         
-        upper = int(angle_params[1] + angle_params[1]*interval/100)
-        lower = int(angle_params[1] - angle_params[1]*interval/100)
-        cropped_array = rotated_image_array[lower:upper, :, 2]
+        upper = int(angle_params[1] + interval/2)
+        lower = int(angle_params[1] - interval/2)
+        #cropped_array = rotated_image_array[lower:upper, :, 2]
  
-        shape_cropped_array = np.shape(cropped_array)
+        #shape_cropped_array = np.shape(cropped_array)
  
         x_mu_array = np.arange(np.shape(rotated_image_array)[1]) * self.mum_per_pixel
         y_mu_array = np.arange(np.shape(rotated_image_array)[0]) * self.mum_per_pixel
@@ -242,6 +274,7 @@ class SPA:
             plt.plot((left_indent,right_indent),(top_indent,top_indent),"r")
             plt.plot((right_indent,right_indent),(top_indent,bottom_indent),"r")
             plt.imshow(image)
+            
             
         
             #plt.imshow(get_intensity_array(cropped_image_array.copy()), cmap="jet", vmin=0, vmax=10, interpolation='spline16', extent=[right_indent, left_indent, bottom_indent, top_indent])
@@ -263,64 +296,50 @@ class SPA:
             #plt.xlabel('x [um]')
             #plt.ylabel('y [um]')
             #plt.colorbar(fraction=0.016, pad=0.01)
-            #plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[upper_index_array], 'r-')
-            #plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[lower_index_array], 'r-')
+            plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[upper_index_array], 'r-')
+            plt.plot(x_mu_array[0:len(rotated_image_array[0, :, 2])], y_mu_array[lower_index_array], 'r-')
  
 
     
-        return rotated_image_array, x_mu_array, y_mu_array, upper, lower
+        return rotated_image_array, x_mu_array, y_mu_array, upper, lower, points
     
     
-    def analyze_image(self, image,input_indent,output_indent,interval,smoothing, sum_width):
+    def analyze_image(self, image,input_indent,output_indent,interval,num_neighbors, threshold_factor=1.5):
         
-        rotated_image_array, x_mu_array, y_mu_array, upper, lower = self.crop_and_rotate(image,input_indent,output_indent,interval)
+        rotated_image_array, x_mu_array, y_mu_array, upper, lower, points = self.crop_and_rotate(image,input_indent,output_indent,interval)
         
         cropped_image_height = np.shape(rotated_image_array)[0]
         
-        left_saturation_crop = 400
-        #right_saturation_crop = len(x_mu_array)-1
+        x = x_mu_array 
+        
 
-        right_saturation_crop = 2000
-        # Plot Saturation
-    
-        # Plot Data
-        x_length_crop_mu_array = x_mu_array[left_saturation_crop:right_saturation_crop] # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
-        x = x_length_crop_mu_array
-        
-        
-        #channel12 = np.add(rotated_image_array[:,:,0],rotated_image_array[:,:,1])
-        
-        
-        #image_data_raw = rotated_image_array[:,:,2]
-        
-        #image_data_raw = np.add(channel12,rotated_image_array[:,:,2])
-        
         image_data_raw = np.sum(rotated_image_array,2)
-       
         
-        y_raw = np.sum(image_data_raw[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
+        cropped_image = image_data_raw[cropped_image_height - upper: cropped_image_height - lower, :]
         
+        mean_image = np.mean(cropped_image)
+        #cropped_image[cropped_image < mean_image*threshold_factor] = 0
         
-        x_iqr,y_iqr = self.remove_outliers_IQR(x, y_raw, smoothing) 
+        y_raw = np.sum(cropped_image, axis=0)
+        
+        smoothing = 10
+        x_iqr,y_iqr = self.remove_outliers_IQR(x, y_raw, smoothing,num_neighbors) 
         
         y_exp = self.EMA(y_iqr,0.01)
-        x_exp = x[:len(y_exp)]
+        x_exp = x_iqr[:len(y_exp)]
         
+        y_savgol = savgol_filter(y_iqr,501,1,mode="nearest")
         
+        fit_x = np.delete(x_iqr, [])
+        fit_y = np.delete(y_savgol, [])
         
-
-        fit_x = np.delete(x_exp, [])
-        fit_y = np.delete(y_exp, [])
-        
-        weights = (fit_x/np.max(fit_y))**2
-        
-        initial_guess = [25, 0.0006]
-        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier,  = curve_fit(exponential_function, fit_x, fit_y, p0=initial_guess, full_output=True, sigma=weights, absolute_sigma=True)
-        fit = exponential_function(fit_x, fit_parameters[0], fit_parameters[1])
+        initial_guess = [25, 0.0006,200]
+        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier,  = curve_fit(exponential_function_offset, fit_x, fit_y, p0=initial_guess, full_output=True) # sigma=weights, absolute_sigma=True
+        fit = exponential_function_offset(fit_x, fit_parameters[0], fit_parameters[1],fit_parameters[2])
         
         fit_upper,fit_lower, alpha_upper, alpha_lower = self.calculate_confidence_interval(fit_parameters, fit_parameters_cov_var_matrix, fit_x, 1.960)
         
-        residuals = fit_y - exponential_function(fit_x, *fit_parameters)
+        residuals = fit_y - exponential_function_offset(fit_x, *fit_parameters)
         ss_res = np.sum(residuals**2)
         ss_tot = np.sum((fit_y-np.mean(fit_y))**2)
         r_squared = 1 - (ss_res/ss_tot)
@@ -331,56 +350,59 @@ class SPA:
         alpha_lower = 10 * np.log10(np.exp((alpha_lower) * 1e4))
         
         if self.show_plots:
-            y_mov = self.SMA(y_iqr,sum_width)
-            x_mov = x[:len(y_mov)]
-           
-            y_fft = abs(fftshift(fft(y_raw)))
-            freq = fftshift(fftfreq(len(y_raw)))
-            image_data, background = self.remove_background(image_data_raw)
-            y = np.mean(image_data[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
+
+            
+            #image_data, background = self.remove_background(image_data_raw)
+            #y = np.mean(image_data[cropped_image_height - upper: cropped_image_height - lower, left_saturation_crop:right_saturation_crop], axis=0)
             
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
-            #plt.axhline(background[0,0],label="Background", color="y")
             plt.legend()
             plt.xlabel('x Length [um]')
-            plt.ylim([0, np.max(y_raw)])
-            plt.ylabel('Sum of blue intensity')
+            #plt.ylim([0, np.max(y_raw)])
+            plt.ylabel('Sum of pixel intensities')
             plt.show()
             
             plt.figure(figsize=(10,6))
-            plt.plot(fit_x, fit_y, 'b-', label="EMA smoothed data with outliers removed")
+            plt.plot(fit_x, fit_y, 'b-', label="Savitzky–Golay smoothed and outlier removed data")
             plt.plot(fit_x, fit, 'r-', label=f"Fit with: {alpha_dB:.3f} dB/cm +- {alpha_dB-alpha_lower:.3f}, R\u00b2: {r_squared:.3f}")
             plt.plot(fit_x, fit_upper, 'r', linestyle='dashed', label="95% Confidence Bound")
             plt.plot(fit_x, fit_lower, 'r', linestyle='dashed')
             plt.legend()
             plt.xlabel('x Length [um]')
-            plt.ylabel('Mean of blue intensity')
+            plt.ylabel('Sum of pixel intensities')
             plt.show()
             
             
             plt.figure(figsize=(10,6))
             plt.plot(x, y_raw, 'b-', label="Raw data")
             plt.plot(x_iqr,y_iqr,"y-",label="IQR outlier removal")
-            plt.plot(x_mov,y_mov,"r-",label=f"Moving average, window length: {sum_width}")
-            plt.plot(x_exp,y_exp, "g-",label="Exponential Moving Average")
+            #plt.plot(x_mov,y_mov,"r-",label=f"Moving average, window length: {sum_width}")
+            #plt.plot(x_exp,y_exp, "g-",label="Exponential Moving Average")
+            #plt.axhline(background*higher,label="Background", color="y")
+            plt.plot(x_iqr,y_savgol,label="Savgol filter",color="r")
             plt.xlabel('x Length [um]')
-            plt.ylabel('Mean of blue intensity')
+            plt.ylabel('Sum of pixel intensities')
             plt.legend()
             plt.show()
+            #plt.savefig()
             
-            middle = int((len(y_fft)-1)/2)
             
-            plt.figure(figsize=(10,6))
+            #window = signal.windows.tukey(len(y_raw),0.1)
+            #y_win = y_raw*window
+            #y_fft = abs(fftshift(fft(y_win)))
+            #freq = fftshift(fftfreq(len(y_win)))
+            #middle = int((len(y_fft)-1)/2)
+            #plt.figure(figsize=(10,6))
             #y_fft[middle:middle+2] = 0
-            plt.plot(y_fft[middle:], 'b-', label="FFT of data")
-            plt.yscale("log")
-            #.xlabel('Frequency [Hz]')
-            plt.ylabel('Amplitude')
-            plt.legend()
-            plt.show()
+            #plt.plot(y_fft[middle:], 'b-', label="FFT of data")
+            #plt.yscale("log")
+            #plt.xlabel('Frequency [Hz]')
+            #plt.ylabel('Amplitude')
+            #plt.legend()
+            #plt.show()
             
-            self.plot_histogram(rotated_image_array)
+            #self.plot_histogram(rotated_image_array)
         
             print("Fit Parameters:", fit_parameters)
             print("Variance-Covariance Matrix Fit Parameters:", fit_parameters_cov_var_matrix)

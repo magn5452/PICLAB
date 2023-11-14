@@ -256,7 +256,7 @@ def exponential_function(x, a, b):
 
 
 def exponential_function_offset(x,a,b,c):
-    return a * np.exp(b * x) + c
+    return a * np.exp(-b * x) + c
     
 
 def linear_function(x, a, b):
