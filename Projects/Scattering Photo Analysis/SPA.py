@@ -22,14 +22,15 @@ from scipy.fft import ifft2,fftshift, fft2, ifftshift
 
 class SPA:
     
-    def __init__(self, show_plots, chiplength):
+    def __init__(self, show_plots, chiplength, manual=False):
         self.show_plots = show_plots
         self.chiplength = chiplength  # 7229 um measured on the GDS, 2445 is the pixel width of the sensor (Both numbers inherent of the sensor and lens)
-        
+        self.manual = manual # When true remember to call manual_input_output and set_um_per_pixel before analyze_image
 
         
-    def set_um_per_pixel(self, points):
+    def set_um_per_pixel(self, point1, point2):
         # calculating Euclidean distance
+        points = [np.array(point1),np.array(point2)]
         dist_pixels = np.linalg.norm(points[0] - points[1]) 
         
         self.mum_per_pixel = self.chiplength / dist_pixels
@@ -149,8 +150,12 @@ class SPA:
         plt.yscale("log")
         
     
-    def manual_input_and_output(self,image):
-        pass
+    def manual_input_and_output(self,input_point, output_point):
+        self.input_width_index = input_point[0]
+        self.input_height_index = input_point[1]
+        
+        self.output_width_index = output_point[0]
+        self.output_height_index = output_point[1]
     
     
     def remove_background(self, image): #FFT image and set center pixel to 0 to remove background and IFFT back to real image
@@ -197,14 +202,18 @@ class SPA:
         
         image_array = np.asarray(image)
         
-        input_width_index, input_height_index, output_width_index, output_height_index = insertion_detection(image.copy(),self.show_plots)
-        
-        #input_width_index = 10
-        #input_height_index = 1300
-        #output_heigth_index = 1300
-        
-        points = [np.array((input_width_index,input_height_index)),np.array((output_width_index,output_height_index))]
-        self.set_um_per_pixel(points)
+        if self.manual == True:
+            input_width_index = self.input_width_index
+            input_height_index = self.input_height_index
+            output_width_index = self.output_width_index
+            output_height_index = self.output_height_index
+        else:
+            input_width_index, input_height_index, output_width_index, output_height_index = insertion_detection(image.copy(),self.show_plots)
+            
+
+            input_point = (input_width_index,input_height_index)
+            output_point = (output_width_index,output_height_index)
+            self.set_um_per_pixel(input_point,output_point)
         
         window_num_pixel_height = np.shape(image_array)[1]  # 2048
         window_num_pixel_width = np.shape(image_array)[0]  # 2448
@@ -301,12 +310,12 @@ class SPA:
  
 
     
-        return rotated_image_array, x_mu_array, y_mu_array, upper, lower, points
+        return rotated_image_array, x_mu_array, y_mu_array, upper, lower
     
     
     def analyze_image(self, image,input_indent,output_indent,interval,num_neighbors, threshold_factor=1.5):
         
-        rotated_image_array, x_mu_array, y_mu_array, upper, lower, points = self.crop_and_rotate(image,input_indent,output_indent,interval)
+        rotated_image_array, x_mu_array, y_mu_array, upper, lower = self.crop_and_rotate(image,input_indent,output_indent,interval)
         
         cropped_image_height = np.shape(rotated_image_array)[0]
         
@@ -333,8 +342,8 @@ class SPA:
         fit_x = np.delete(x_iqr, [])
         fit_y = np.delete(y_savgol, [])
         
-        initial_guess = [25, 0.0006,200]
-        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier,  = curve_fit(exponential_function_offset, fit_x, fit_y, p0=initial_guess, full_output=True) # sigma=weights, absolute_sigma=True
+        initial_guess = [25, 0.0006,np.mean(fit_y[-10:])]
+        fit_parameters, fit_parameters_cov_var_matrix, infodict,mesg, ier, = curve_fit(exponential_function_offset, fit_x, fit_y, p0=initial_guess, full_output=True) # sigma=weights, absolute_sigma=True
         fit = exponential_function_offset(fit_x, fit_parameters[0], fit_parameters[1],fit_parameters[2])
         
         fit_upper,fit_lower, alpha_upper, alpha_lower = self.calculate_confidence_interval(fit_parameters, fit_parameters_cov_var_matrix, fit_x, 1.960)
@@ -415,4 +424,4 @@ class SPA:
             print(f"R\u00b2 : {r_squared}")
         
        
-        return alpha_dB, r_squared, alpha_upper, alpha_lower
+        return alpha_dB, r_squared, alpha_upper, alpha_lower, fit_x, fit_y
